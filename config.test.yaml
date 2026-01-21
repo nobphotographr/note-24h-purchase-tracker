@@ -1,0 +1,20 @@
+keywords:
+  - 恋愛
+  - 副業
+  - 投資
+  - 美容
+  - 転職
+  - 占い
+  - MBTI
+results_per_keyword: 5
+article_wait_ms: 1500
+between_articles_ms:
+  min: 1000
+  max: 2000
+between_pages_ms:
+  min: 1000
+  max: 2000
+headless: false
+max_retries: 2
+dry_run: true
+split_days: 7

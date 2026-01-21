@@ -69,3 +69,5 @@ between_pages_ms:
   max: 5000
 headless: true
 max_retries: 2
+dry_run: false
+split_days: 7
