@@ -230,32 +230,111 @@ def extract_like_count(page) -> int:
 
 
 def extract_price(page) -> int:
-    selectors = [
+    # 優先順位0: ヘッダー内のステータスボタン（¥0~ など）
+    header_status_el = page.query_selector(".o-noteContentHeader__status .a-button__inner")
+    if header_status_el:
+        text = header_status_el.inner_text().strip()
+        if re.search(r"¥\s*0\s*[〜~]", text):
+            return 0
+        match = re.search(r"¥\s*([\d,]+)", text)
+        if match:
+            return int(match.group(1).replace(",", ""))
+
+    # 優先順位1: ヘッダー付近の価格表示
+    header_selectors = [
         ".o-noteContentHeader__price",
         ".p-article__price",
         "[class*='ContentHeader'] [class*='price']",
     ]
-    for selector in selectors:
+    for selector in header_selectors:
         el = page.query_selector(selector)
         if el:
             text = el.inner_text().strip()
             if re.search(r"¥\s*0\s*[〜~]", text):
                 return 0
-            return parse_int(text)
+            match = re.search(r"¥\s*([\d,]+)", text)
+            if match:
+                return int(match.group(1).replace(",", ""))
+
+    # 優先順位2: 売り切れ時のペイウォール内の価格表示
+    paywall_selectors = [
+        ".o-accordionPaywall .text-xl",
+        ".o-paywall .text-2xl",
+        ".o-singlePaywall .text-2xl",
+        "section.o-paywall span.text-2xl",
+    ]
+    for selector in paywall_selectors:
+        el = page.query_selector(selector)
+        if el:
+            text = el.inner_text().strip()
+            match = re.search(r"([\d,]+)", text)
+            if match:
+                price = int(match.group(1).replace(",", ""))
+                if price > 0:
+                    return price
+
+    # 優先順位3: 購入ボタン周辺から価格を探す
+    button_selectors = [
+        "button.a-button span",
+        "button[class*='button'] span",
+        ".a-button__inner span",
+        "[class*='price']",
+    ]
+    for selector in button_selectors:
+        elements = page.query_selector_all(selector)
+        for el in elements:
+            text = el.inner_text().strip()
+            match = re.search(r"¥([\d,]+)", text)
+            if match:
+                price = int(match.group(1).replace(",", ""))
+                if price > 0:
+                    return price
+
+    # 優先順位4: ページ全体から価格キーワード付きの¥を探す
+    price_keywords = ["返金可", "購入", "買う", "この記事は"]
+    all_elements = page.query_selector_all("p, div, span, button")
+    for el in all_elements:
+        try:
+            text = el.inner_text().strip()
+            has_keyword = any(kw in text for kw in price_keywords)
+            if has_keyword:
+                match = re.search(r"¥([\d,]+)", text)
+                if match:
+                    price = int(match.group(1).replace(",", ""))
+                    if price > 0:
+                        return price
+        except Exception:
+            continue
+
     return 0
 
 
 def extract_tags(page) -> str:
-    tags = page.eval_on_selector_all(
-        "a[href*='/tags/']",
-        """
-        (elements) => elements.map(e => e.textContent.trim()).filter(Boolean)
-        """,
-    )
-    if not tags:
-        return ""
-    deduped = list(dict.fromkeys(tags))
-    return ", ".join(deduped)
+    """タグを抽出（カンマ区切りの文字列で返す）"""
+    tags = []
+
+    # noteのタグセレクタ（複数パターンに対応）
+    selectors = [
+        ".m-tagList__item a",
+        ".o-noteHashtag a",
+        'a[href*="/hashtag/"]',
+        ".note-hashtag",
+        "[class*='hashtag'] a",
+    ]
+
+    for selector in selectors:
+        elements = page.query_selector_all(selector)
+        if elements:
+            for el in elements:
+                tag_text = el.inner_text().strip()
+                # #を除去
+                tag_text = tag_text.lstrip("#")
+                if tag_text and tag_text not in tags:
+                    tags.append(tag_text)
+            if tags:
+                break  # 最初にマッチしたセレクタのタグを使用
+
+    return ",".join(tags)
 
 
 def extract_created_at(page) -> str:
@@ -420,7 +499,9 @@ def run(config_path: str = "config.yaml") -> None:
                         hr = payload.get('highRating', 0)
                         hr_mark = f" HR:{hr}" if hr > 0 else ""
                         sc_mark = " [claim]" if payload.get('salesClaim') else ""
-                        print(f"[dry] {purchased_mark}{sc_mark} {title} by {author} {payload.get('price', 0)}yen{hr_mark}")
+                        tags = payload.get('tags', '').encode('ascii', 'replace').decode('ascii')[:30]
+                        tags_mark = f" [{tags}]" if tags else ""
+                        print(f"[dry] {purchased_mark}{sc_mark} {title} by {author} {payload.get('price', 0)}yen{hr_mark}{tags_mark}")
                     else:
                         result = send_to_gas(gas_url, payload)
                         print(f"[gas] {result}")

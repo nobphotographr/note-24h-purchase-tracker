@@ -1,10 +1,6 @@
 keywords:
   - 恋愛
-  - 副業
-  - 投資
-  - 美容
-  - 転職
-results_per_keyword: 100
+results_per_keyword: 5
 article_wait_ms: 1500
 between_articles_ms:
   min: 2500
@@ -14,5 +10,5 @@ between_pages_ms:
   max: 5000
 headless: false
 max_retries: 2
-dry_run: true
+dry_run: false
 split_days: 1
