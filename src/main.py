@@ -275,6 +275,42 @@ def extract_created_at(page) -> str:
     return ""
 
 
+def extract_high_rating(page) -> int:
+    """高評価数を抽出（購入者のみが付けられる）"""
+    selectors = [
+        ".m-contentRaters__label",
+        "[class*='contentRaters'] button",
+        "[class*='Raters']",
+    ]
+    for selector in selectors:
+        el = page.query_selector(selector)
+        if el:
+            text = el.inner_text().strip()
+            match = re.search(r"(\d+)人が高評価", text)
+            if match:
+                return int(match.group(1))
+    return 0
+
+
+def extract_sales_claim(page) -> str:
+    """販売主張テキストを検索（本文中の「○部完売」など）"""
+    body_text = page.evaluate("() => document.body.innerText")
+    patterns = [
+        r"\d+部完売",
+        r"\d+部販売",
+        r"\d+部突破",
+        r"\d+部売れ",
+        r"\d+部達成",
+        r"\d+冊完売",
+        r"\d+冊販売",
+        r"\d+冊突破",
+    ]
+    for pattern in patterns:
+        if re.search(pattern, body_text):
+            return "○"
+    return ""
+
+
 def detect_purchased_24h(page, timeout_ms: int) -> bool:
     try:
         page.wait_for_selector(PURCHASED_SELECTOR, timeout=timeout_ms, state="attached")
@@ -304,23 +340,26 @@ def scrape_article(page, url: str, timeout_ms: int, max_retries: int) -> Dict:
             author = extract_author(page)
             author_url = extract_author_url(page)
             likes = extract_like_count(page)
+            high_rating = extract_high_rating(page)
             price = extract_price(page)
             tags = extract_tags(page)
             created_at = extract_created_at(page)
+            sales_claim = extract_sales_claim(page)
 
+            # note-sales-tracker Chrome拡張と同じ形式
             payload = {
                 "url": url,
                 "title": title,
                 "author": author,
                 "authorUrl": author_url,
                 "likes": likes,
-                "highRating": 0,
+                "highRating": high_rating,
                 "price": price,
                 "tags": tags,
                 "createdAt": created_at,
-                "salesClaim": "",
+                "salesClaim": sales_claim,
                 "hasSalesInfo": purchased_24h,
-                "salesMessage": "買われています 過去24時間" if purchased_24h else "",
+                "salesMessage": "買われています 過去24時間" if purchased_24h else None,
                 "purchased24h": purchased_24h,
                 "recordedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
@@ -367,18 +406,26 @@ def run(config_path: str = "config.yaml") -> None:
 
             for idx, url in enumerate(urls, start=1):
                 print(f"[article] {idx}/{len(urls)} {url}")
-                payload = scrape_article(
-                    article_page,
-                    url,
-                    config.article_wait_ms,
-                    config.max_retries,
-                )
-                if config.dry_run:
-                    purchased_mark = "[24h]" if payload.get("purchased24h") else ""
-                    print(f"[dry] {purchased_mark} {payload.get('title', '')[:40]} by {payload.get('author', '')} {payload.get('price', 0)}yen")
-                else:
-                    result = send_to_gas(gas_url, payload)
-                    print(f"[gas] {result}")
+                try:
+                    payload = scrape_article(
+                        article_page,
+                        url,
+                        config.article_wait_ms,
+                        config.max_retries,
+                    )
+                    if config.dry_run:
+                        purchased_mark = "[24h]" if payload.get("purchased24h") else ""
+                        title = payload.get('title', '')[:40].encode('ascii', 'replace').decode('ascii')
+                        author = payload.get('author', '').encode('ascii', 'replace').decode('ascii')
+                        hr = payload.get('highRating', 0)
+                        hr_mark = f" HR:{hr}" if hr > 0 else ""
+                        sc_mark = " [claim]" if payload.get('salesClaim') else ""
+                        print(f"[dry] {purchased_mark}{sc_mark} {title} by {author} {payload.get('price', 0)}yen{hr_mark}")
+                    else:
+                        result = send_to_gas(gas_url, payload)
+                        print(f"[gas] {result}")
+                except Exception as e:
+                    print(f"[error] Skipping {url}: {e}")
                 rand_sleep(config.between_articles_ms)
 
         browser.close()

@@ -4,17 +4,15 @@ keywords:
   - 投資
   - 美容
   - 転職
-  - 占い
-  - MBTI
-results_per_keyword: 5
+results_per_keyword: 100
 article_wait_ms: 1500
 between_articles_ms:
-  min: 1000
-  max: 2000
+  min: 2500
+  max: 4000
 between_pages_ms:
-  min: 1000
-  max: 2000
+  min: 3000
+  max: 5000
 headless: false
 max_retries: 2
 dry_run: true
-split_days: 7
+split_days: 1
