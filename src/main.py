@@ -143,8 +143,9 @@ def collect_from_single_sort(page, search_url: str, limit: int, between_pages_ms
             }
         """)
 
-        # スクロール後の待機時間を長めに（新しいコンテンツの読み込みを待つ）
-        time.sleep(random.uniform(6, 8))
+        # スクロール後の待機時間（新しいコンテンツの読み込みを待つ）
+        # ローカル環境では短め、VPS環境では長めに
+        time.sleep(random.uniform(4, 6))
 
     return collected[:limit]
 
