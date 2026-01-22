@@ -1,0 +1,14 @@
+keywords:
+  - 副業
+results_per_keyword: 50
+article_wait_ms: 1500
+between_articles_ms:
+  min: 2500
+  max: 4000
+between_pages_ms:
+  min: 3000
+  max: 5000
+headless: false
+max_retries: 2
+dry_run: true
+split_days: 1

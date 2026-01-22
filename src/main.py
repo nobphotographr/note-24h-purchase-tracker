@@ -100,7 +100,8 @@ def extract_article_urls(page) -> List[str]:
 def collect_from_single_sort(page, search_url: str, limit: int, between_pages_ms: Tuple[int, int]) -> List[str]:
     """単一のソート順で記事URLを収集"""
     page.goto(search_url, wait_until="networkidle")
-    time.sleep(3)
+    # 初期読み込み待機
+    time.sleep(random.uniform(3, 4))
 
     collected: List[str] = []
     stagnant_rounds = 0
@@ -122,7 +123,7 @@ def collect_from_single_sort(page, search_url: str, limit: int, between_pages_ms
 
         if len(collected) == before:
             stagnant_rounds += 1
-            if stagnant_rounds >= 3:
+            if stagnant_rounds >= 5:
                 print(f"  [scroll] No new articles after {stagnant_rounds} attempts, stopping")
                 break
         else:
@@ -131,10 +132,19 @@ def collect_from_single_sort(page, search_url: str, limit: int, between_pages_ms
         if len(collected) >= limit:
             break
 
-        # ページ最下部までスクロール
-        page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
-        # VPS環境を考慮して待機時間を延長
-        time.sleep(5)
+        # スムーズスクロール（人間らしい動作）
+        page.evaluate("""
+            () => {
+                const scrollHeight = document.documentElement.scrollHeight;
+                window.scrollTo({
+                    top: scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+        """)
+
+        # スクロール後の待機時間を長めに（新しいコンテンツの読み込みを待つ）
+        time.sleep(random.uniform(6, 8))
 
     return collected[:limit]
 
@@ -484,7 +494,13 @@ def run(config_path: str = "config.yaml") -> None:
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=config.headless)
-        context = browser.new_context()
+        # Bot検出回避のための設定
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            locale="ja-JP",
+            timezone_id="Asia/Tokyo",
+        )
         search_page = context.new_page()
         article_page = context.new_page()
 
