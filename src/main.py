@@ -99,13 +99,17 @@ def extract_article_urls(page) -> List[str]:
 
 def collect_from_single_sort(page, search_url: str, limit: int, between_pages_ms: Tuple[int, int]) -> List[str]:
     """単一のソート順で記事URLを収集"""
-    page.goto(search_url, wait_until="domcontentloaded")
-    time.sleep(2)
+    page.goto(search_url, wait_until="networkidle")
+    time.sleep(3)
 
     collected: List[str] = []
     stagnant_rounds = 0
+    max_scrolls = 50  # 最大スクロール回数
 
-    while len(collected) < limit and stagnant_rounds < 3:
+    for scroll_count in range(max_scrolls):
+        if len(collected) >= limit:
+            break
+
         current = extract_article_urls(page)
         before = len(collected)
         for url in current:
@@ -114,13 +118,23 @@ def collect_from_single_sort(page, search_url: str, limit: int, between_pages_ms
             if len(collected) >= limit:
                 break
 
+        print(f"  [scroll {scroll_count + 1}] {len(collected)} urls collected")
+
         if len(collected) == before:
             stagnant_rounds += 1
+            if stagnant_rounds >= 3:
+                print(f"  [scroll] No new articles after {stagnant_rounds} attempts, stopping")
+                break
         else:
             stagnant_rounds = 0
 
-        page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
-        rand_sleep(between_pages_ms)
+        if len(collected) >= limit:
+            break
+
+        # ページ最下部までスクロール
+        page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+        # VPS環境を考慮して待機時間を延長
+        time.sleep(5)
 
     return collected[:limit]
 
