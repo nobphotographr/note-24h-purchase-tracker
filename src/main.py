@@ -132,19 +132,10 @@ def collect_from_single_sort(page, search_url: str, limit: int, between_pages_ms
         if len(collected) >= limit:
             break
 
-        # スムーズスクロール（人間らしい動作）
-        page.evaluate("""
-            () => {
-                const scrollHeight = document.documentElement.scrollHeight;
-                window.scrollTo({
-                    top: scrollHeight,
-                    behavior: 'smooth'
-                });
-            }
-        """)
+        # ページ最下部までスクロール
+        page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
 
         # スクロール後の待機時間（新しいコンテンツの読み込みを待つ）
-        # ローカル環境では短め、VPS環境では長めに
         time.sleep(random.uniform(4, 6))
 
     return collected[:limit]
