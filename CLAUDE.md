@@ -6,7 +6,22 @@ note.comの有料記事から24時間以内購入された記事を追跡するP
 ## リポジトリ情報
 - **GitHub**: https://github.com/nobphotographr/note-24h-purchase-tracker
 - **可視性**: Public
+
+### ローカル環境
+
+#### macOS環境
 - **ローカルパス**: `/Users/nobu/Github/note-24h-purchase-tracker`
+- **SSH鍵**: `~/.ssh/id_ed25519`
+- **GitHub CLI**: 認証済み（`gh auth status`で確認可能）
+
+#### Windows環境
+> **Windows側でClaude Codeを使用する場合は、以下の情報を記入してください:**
+>
+> - **ローカルパス**: `（例: C:\Users\nobu\Projects\note-24h-purchase-tracker）`
+> - **SSH鍵の場所**: `（例: C:\Users\nobu\.ssh\id_ed25519）`
+> - **GitHub CLI認証状態**: `（gh auth statusの結果を記載）`
+> - **Python環境**: `（python --versionまたはpython3 --versionの結果）`
+> - **備考**: `（WSL使用の有無、その他特記事項）`
 
 ## VPS環境
 
