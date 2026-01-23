@@ -465,7 +465,7 @@ def scrape_article(page, url: str, timeout_ms: int, max_retries: int) -> Dict:
     raise RuntimeError(f"Failed to scrape {url}: {last_error}")
 
 
-def run(config_path: str = "config.yaml") -> None:
+def run(config_path: str = "config.yaml", keywords_override: Optional[List[str]] = None) -> None:
     load_dotenv()
     gas_url = os.getenv("GAS_WEB_APP_URL", "").strip()
 
@@ -473,16 +473,21 @@ def run(config_path: str = "config.yaml") -> None:
     if not config.keywords:
         raise RuntimeError("keywords is empty in config.yaml")
 
-    keywords = get_keywords_for_today(config.keywords, config.split_days)
-    if not keywords:
-        print("[skip] No keywords for today")
-        return
+    # キーワードが外部から指定されている場合はそれを使用
+    if keywords_override:
+        keywords = keywords_override
+        print(f"[manual] {len(keywords)} keywords specified: {', '.join(keywords)}")
+    else:
+        keywords = get_keywords_for_today(config.keywords, config.split_days)
+        if not keywords:
+            print("[skip] No keywords for today")
+            return
+
+        day_name = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][datetime.now().weekday()]
+        print(f"[split] {day_name}: {len(keywords)}/{len(config.keywords)} keywords (split_days={config.split_days})")
 
     if config.dry_run:
         print("[mode] DRY RUN - GAS will be skipped")
-
-    day_name = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][datetime.now().weekday()]
-    print(f"[split] {day_name}: {len(keywords)}/{len(config.keywords)} keywords (split_days={config.split_days})")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=config.headless)
