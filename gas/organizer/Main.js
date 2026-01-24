@@ -287,9 +287,14 @@ function applySheetFormatting(sheet) {
 
 function formatAllGenreSheets() {
   const targetSpreadsheet = getOrCreateTargetSpreadsheet();
+  const excludeSheets = ['概要', 'シート1']; // 書式を上書きしないシート
+
   targetSpreadsheet.getSheets().forEach(sheet => {
     if (sheet.getLastRow() === 0) {
       return;
+    }
+    if (excludeSheets.includes(sheet.getName())) {
+      return; // 除外シートはスキップ
     }
     applySheetFormatting(sheet);
   });
