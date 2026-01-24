@@ -26,11 +26,13 @@ note.comの有料記事から24時間以内購入された記事を追跡するP
 ## VPS環境
 
 ### サーバー情報
-- **プロバイダ**: ConoHa VPS
-- **OS**: Ubuntu 24.04.3 LTS
-- **メモリ**: 1GB RAM
-- **IPアドレス**: 160.251.209.34
-- **SSH接続**: `ssh -i ~/.ssh/id_ed25519 root@160.251.209.34`
+- **プロバイダ**: Xserver VPS
+- **OS**: Ubuntu 25.04
+- **メモリ**: 6GB RAM
+- **vCPU**: 4コア
+- **SSD**: 150GB NVMe
+- **IPアドレス**: 162.43.45.242
+- **SSH接続**: `ssh root@162.43.45.242`
 
 ### プロジェクト配置
 - **VPSパス**: `/root/note-24h-purchase-tracker`
@@ -45,7 +47,7 @@ note.comの有料記事から24時間以内購入された記事を追跡するP
 
 ### 定期実行（cron）
 ```bash
-# JST 10:00に毎日実行（UTC 01:00）
+# JST 01:00に毎日実行
 0 1 * * * cd /root/note-24h-purchase-tracker && /root/note-24h-purchase-tracker/.venv/bin/python -m src.main config.yaml >> /var/log/note-scraper.log 2>&1
 ```
 
@@ -128,13 +130,13 @@ cd /root/note-24h-purchase-tracker
 ### バックグラウンド実行
 ```bash
 # VPS上でバックグラウンド実行
-ssh -i ~/.ssh/id_ed25519 root@160.251.209.34 'cd /root/note-24h-purchase-tracker && nohup /root/note-24h-purchase-tracker/.venv/bin/python -u manual_run.py config.yaml メイク 転職 >> /var/log/note-scraper-manual-sun.log 2>&1 &'
+ssh root@162.43.45.242 'cd /root/note-24h-purchase-tracker && nohup /root/note-24h-purchase-tracker/.venv/bin/python -u manual_run.py config.yaml メイク 転職 >> /var/log/note-scraper-manual-sun.log 2>&1 &'
 
 # プロセス確認
-ssh -i ~/.ssh/id_ed25519 root@160.251.209.34 'ps aux | grep "[p]ython.*manual_run"'
+ssh root@162.43.45.242 'ps aux | grep "[p]ython.*manual_run"'
 
 # ログ確認
-ssh -i ~/.ssh/id_ed25519 root@160.251.209.34 'tail -f /var/log/note-scraper-manual-sun.log'
+ssh root@162.43.45.242 'tail -f /var/log/note-scraper-manual-sun.log'
 ```
 
 ## よく使うコマンド
@@ -142,17 +144,17 @@ ssh -i ~/.ssh/id_ed25519 root@160.251.209.34 'tail -f /var/log/note-scraper-manu
 ### VPS接続とステータス確認
 ```bash
 # SSH接続
-ssh -i ~/.ssh/id_ed25519 root@160.251.209.34
+ssh root@162.43.45.242
 
 # 実行中のスクレイパープロセス確認
-ssh -i ~/.ssh/id_ed25519 root@160.251.209.34 'ps aux | grep "[p]ython.*src.main\|[p]ython.*manual_run"'
+ssh root@162.43.45.242 'ps aux | grep "[p]ython.*src.main\|[p]ython.*manual_run"'
 
 # ログ確認
-ssh -i ~/.ssh/id_ed25519 root@160.251.209.34 'tail -100 /var/log/note-scraper.log'
-ssh -i ~/.ssh/id_ed25519 root@160.251.209.34 'tail -f /var/log/note-scraper.log'  # リアルタイム監視
+ssh root@162.43.45.242 'tail -100 /var/log/note-scraper.log'
+ssh root@162.43.45.242 'tail -f /var/log/note-scraper.log'  # リアルタイム監視
 
 # プロセス停止
-ssh -i ~/.ssh/id_ed25519 root@160.251.209.34 'pkill -f "python.*src.main"'
+ssh root@162.43.45.242 'pkill -f "python.*src.main"'
 ```
 
 ### Git操作
@@ -164,7 +166,7 @@ git commit -m "メッセージ"
 git push
 
 # VPSで最新版を取得
-ssh -i ~/.ssh/id_ed25519 root@160.251.209.34 'cd /root/note-24h-purchase-tracker && git pull'
+ssh root@162.43.45.242 'cd /root/note-24h-purchase-tracker && git pull'
 ```
 
 ## 設定ファイル
@@ -205,12 +207,17 @@ Google Apps Script（GAS）のWeb Appにデータを送信。
 ## 開発履歴
 
 ### 主な修正内容
-1. **無限スクロール問題の解決** (2025-01-23)
+1. **Xserver VPSへ移行** (2026-01-24)
+   - ConoHa VPS (1GB) → Xserver VPS (6GB) に移行
+   - メモリ不足によるPage crashedを解消
+   - 安定した実行環境を確保
+
+2. **無限スクロール問題の解決** (2025-01-23)
    - VPS環境で20記事しか取得できない問題を修正
    - Bot検出回避設定を追加
    - スクロール処理を最適化（scrollTo + documentElement.scrollHeight）
    - 待機時間を4-6秒に増加
 
-2. **手動実行スクリプトの追加** (2025-01-23)
+3. **手動実行スクリプトの追加** (2025-01-23)
    - manual_run.py: キーワードを直接指定して実行可能
    - src/main.py: run関数にkeywords_overrideパラメータを追加
