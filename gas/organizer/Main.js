@@ -35,8 +35,8 @@ function organizeNoteData() {
     // ジャンル別にデータを分類
     const categorizedData = categorizeData(sourceData);
 
-    // ジャンルごとに処理
-    Object.keys(GENRE_RULES).forEach(genre => {
+    // ジャンルごとに処理（優先順序に従う）
+    GENRE_PRIORITY.forEach(genre => {
       const data = categorizedData[genre] || [];
       Logger.log(`${genre}: ${data.length}件`);
 
@@ -102,17 +102,18 @@ function getSourceData() {
 function categorizeData(data) {
   const result = {};
 
-  // ジャンルの初期化
-  Object.keys(GENRE_RULES).forEach(genre => {
+  // ジャンルの初期化（優先順序に従う）
+  GENRE_PRIORITY.forEach(genre => {
     result[genre] = [];
   });
 
   data.forEach(row => {
     const tag = row[COLUMNS.TAG] || '';
     const title = row[COLUMNS.TITLE] || '';
+    const author = row[COLUMNS.AUTHOR] || '';
 
-    // ジャンル判定
-    const genre = detectGenre(tag, title);
+    // ジャンル判定（著者ルール → タグ → タイトルの優先順）
+    const genre = detectGenre(tag, title, author);
     result[genre].push(row);
   });
 
@@ -120,16 +121,30 @@ function categorizeData(data) {
 }
 
 /**
- * タグまたはタイトルからジャンルを判定
+ * タグ・タイトル・著者からジャンルを判定
  * @param {string} tag タグ
  * @param {string} title タイトル
+ * @param {string} author 著者名
  * @return {string} ジャンル名
  */
-function detectGenre(tag, title) {
-  // 1. タグでマッチング
-  for (const [genre, keywords] of Object.entries(GENRE_RULES)) {
+function detectGenre(tag, title, author) {
+  // 0. 著者ルールでマッチング（最優先）
+  if (author) {
+    for (const genre of Object.keys(AUTHOR_RULES)) {
+      const authors = AUTHOR_RULES[genre] || [];
+      for (const authorName of authors) {
+        if (author.includes(authorName)) {
+          return genre;
+        }
+      }
+    }
+  }
+
+  // 1. タグでマッチング（優先順序に従う）
+  for (const genre of GENRE_PRIORITY) {
     if (genre === 'その他') continue;
 
+    const keywords = GENRE_RULES[genre] || [];
     for (const keyword of keywords) {
       if (tag.includes(keyword)) {
         return genre;
@@ -138,9 +153,10 @@ function detectGenre(tag, title) {
   }
 
   // 2. タグが空白またはマッチしない場合、タイトルでマッチング
-  for (const [genre, keywords] of Object.entries(GENRE_RULES)) {
+  for (const genre of GENRE_PRIORITY) {
     if (genre === 'その他') continue;
 
+    const keywords = GENRE_RULES[genre] || [];
     for (const keyword of keywords) {
       if (title.includes(keyword)) {
         return genre;
@@ -309,7 +325,7 @@ function resetTargetSheets() {
     targetSpreadsheet.deleteSheet(sheet);
   });
 
-  Object.keys(GENRE_RULES).forEach(genre => {
+  GENRE_PRIORITY.forEach(genre => {
     const sheet = targetSpreadsheet.insertSheet(genre);
     initializeSheetHeaders(sheet);
   });
