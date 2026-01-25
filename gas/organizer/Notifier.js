@@ -123,6 +123,26 @@ function notifyGasError(errorMessage) {
 }
 
 /**
+ * Slack Webhook URL設定確認とテスト通知
+ * 1. プロジェクト設定 > スクリプトプロパティで SLACK_WEBHOOK_URL を設定
+ * 2. この関数を実行してテスト通知を送信
+ */
+function setupSlackWebhook() {
+  const url = getSlackWebhookUrl();
+  if (!url) {
+    Logger.log('エラー: SLACK_WEBHOOK_URL がスクリプトプロパティに設定されていません');
+    Logger.log('プロジェクト設定 > スクリプトプロパティ で設定してください');
+    return;
+  }
+
+  Logger.log('Slack Webhook URL: 設定済み');
+
+  // テスト通知
+  const result = notifySlack('GASからのテスト通知です（セットアップ完了）', 'success');
+  Logger.log(`Test notification result: ${result}`);
+}
+
+/**
  * テスト通知を送信
  */
 function testSlackNotification() {
