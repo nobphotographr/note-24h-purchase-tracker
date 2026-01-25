@@ -232,6 +232,15 @@ keywords:
   - 自動化
   - Midjourney
   - Stable Diffusion
+  - n8n
+  - Google Apps Script
+  - Skills
+  # 写真編集（2026-01-26追加）
+  - Lightroom
+  - プリセット
+  - LUT
+  - 写真編集
+  - RAW現像
 results_per_keyword: 100
 article_wait_ms: 1500
 between_articles_ms:

@@ -35,7 +35,7 @@ const GENRE_RULES = {
     // AI活用
     'プロンプト', 'AIアート', 'AI画像', 'AIイラスト', 'AI副業', '画像生成AI',
     // AI自動化ツール
-    'Notion', 'Zapier', 'Make', 'GAS', '自動化',
+    'Notion', 'Zapier', 'Make', 'GAS', '自動化', 'n8n', 'Google Apps Script', 'Skills',
     // 開発
     'Vibe Coding', 'プログラミング', 'コーディング', 'Python', 'JavaScript',
     'エンジニア', 'Web開発', 'アプリ開発', 'ノーコード', 'ローコード'
@@ -52,7 +52,9 @@ const GENRE_RULES = {
     'ライティング', 'コピーライティング', '文章術', 'タイトル術', 'セールスライティング',
     'Webライター', 'ライター',
     // デザイン副業
-    'Canva', 'Figma', 'デザイン副業', 'バナー作成', 'LINEスタンプ'
+    'Canva', 'Figma', 'デザイン副業', 'バナー作成', 'LINEスタンプ',
+    // 写真編集・プリセット販売
+    'Lightroom', 'プリセット', 'LUT', '写真編集', 'RAW現像'
   ],
   '恋愛・マッチングアプリ': [
     // マッチングアプリ
