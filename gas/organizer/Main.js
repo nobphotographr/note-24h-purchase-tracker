@@ -129,11 +129,12 @@ function categorizeData(data) {
  */
 function detectGenre(tag, title, author) {
   // 0. 著者ルールでマッチング（最優先）
-  if (author) {
+  const authorStr = String(author || '');
+  if (authorStr) {
     for (const genre of Object.keys(AUTHOR_RULES)) {
       const authors = AUTHOR_RULES[genre] || [];
       for (const authorName of authors) {
-        if (author.includes(authorName)) {
+        if (authorStr.includes(authorName)) {
           return genre;
         }
       }
