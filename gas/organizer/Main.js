@@ -29,6 +29,7 @@ function organizeNoteData() {
     if (sourceData.length === 0) {
       Logger.log('処理対象データがありません');
       formatAllGenreSheets();
+      notifyGasNoData();
       return;
     }
 
@@ -36,8 +37,10 @@ function organizeNoteData() {
     const categorizedData = categorizeData(sourceData);
 
     // ジャンルごとに処理（優先順序に従う）
+    const genreCounts = {};
     GENRE_PRIORITY.forEach(genre => {
       const data = categorizedData[genre] || [];
+      genreCounts[genre] = data.length;
       Logger.log(`${genre}: ${data.length}件`);
 
       if (data.length > 0) {
@@ -49,10 +52,14 @@ function organizeNoteData() {
     markAsProcessed(rowNumbers);
     formatAllGenreSheets();
 
+    // 完了通知
+    notifyGasComplete(sourceData.length, cleanResult.removed, genreCounts);
+
     Logger.log('=== データ整理処理完了 ===');
 
   } catch (error) {
     Logger.log(`エラー発生: ${error.message}`);
+    notifyGasError(error.message);
     throw error;
   }
 }
