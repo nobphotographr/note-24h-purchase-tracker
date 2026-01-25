@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
+from src.notifier import notify_complete, notify_critical, notify_error, notify_start
+
 SEARCH_URL_PAID_POPULAR = "https://note.com/search?context=note_for_sale&q={keyword}&sort=popular"
 SEARCH_URL_PAID_TREND = "https://note.com/search?context=note_for_sale&q={keyword}&sort=trend"
 PURCHASED_SELECTOR = ".m-purchasedWithinLast24HoursBalloon"
@@ -474,6 +476,9 @@ def run(config_path: str = "config.yaml", keywords_override: Optional[List[str]]
         raise RuntimeError("keywords is empty in config.yaml")
 
     # キーワードが外部から指定されている場合はそれを使用
+    day_names_ja = ["月", "火", "水", "木", "金", "土", "日"]
+    day_name_ja = day_names_ja[datetime.now().weekday()]
+
     if keywords_override:
         keywords = keywords_override
         print(f"[manual] {len(keywords)} keywords specified: {', '.join(keywords)}")
@@ -489,54 +494,81 @@ def run(config_path: str = "config.yaml", keywords_override: Optional[List[str]]
     if config.dry_run:
         print("[mode] DRY RUN - GAS will be skipped")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=config.headless)
-        # Bot検出回避のための設定
-        context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            locale="ja-JP",
-            timezone_id="Asia/Tokyo",
-        )
-        search_page = context.new_page()
-        article_page = context.new_page()
+    # 統計情報
+    start_time = time.time()
+    total_records = 0
+    new_records = 0
+    error_count = 0
 
-        for keyword in keywords:
-            urls = collect_article_urls(
-                search_page,
-                keyword,
-                config.results_per_keyword,
-                config.between_pages_ms,
+    # 開始通知
+    if not config.dry_run:
+        notify_start(len(keywords), day_name_ja, len(config.keywords))
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=config.headless)
+            # Bot検出回避のための設定
+            context = browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                locale="ja-JP",
+                timezone_id="Asia/Tokyo",
             )
-            print(f"[search] keyword='{keyword}' urls={len(urls)}")
+            search_page = context.new_page()
+            article_page = context.new_page()
 
-            for idx, url in enumerate(urls, start=1):
-                print(f"[article] {idx}/{len(urls)} {url}")
-                try:
-                    payload = scrape_article(
-                        article_page,
-                        url,
-                        config.article_wait_ms,
-                        config.max_retries,
-                    )
-                    if config.dry_run:
-                        purchased_mark = "[24h]" if payload.get("purchased24h") else ""
-                        title = payload.get('title', '')[:40].encode('ascii', 'replace').decode('ascii')
-                        author = payload.get('author', '').encode('ascii', 'replace').decode('ascii')
-                        hr = payload.get('highRating', 0)
-                        hr_mark = f" HR:{hr}" if hr > 0 else ""
-                        sc_mark = " [claim]" if payload.get('salesClaim') else ""
-                        tags = payload.get('tags', '').encode('ascii', 'replace').decode('ascii')[:30]
-                        tags_mark = f" [{tags}]" if tags else ""
-                        print(f"[dry] {purchased_mark}{sc_mark} {title} by {author} {payload.get('price', 0)}yen{hr_mark}{tags_mark}")
-                    else:
-                        result = send_to_gas(gas_url, payload)
-                        print(f"[gas] {result}")
-                except Exception as e:
-                    print(f"[error] Skipping {url}: {e}")
-                rand_sleep(config.between_articles_ms)
+            for keyword in keywords:
+                urls = collect_article_urls(
+                    search_page,
+                    keyword,
+                    config.results_per_keyword,
+                    config.between_pages_ms,
+                )
+                print(f"[search] keyword='{keyword}' urls={len(urls)}")
 
-        browser.close()
+                for idx, url in enumerate(urls, start=1):
+                    print(f"[article] {idx}/{len(urls)} {url}")
+                    try:
+                        payload = scrape_article(
+                            article_page,
+                            url,
+                            config.article_wait_ms,
+                            config.max_retries,
+                        )
+                        if config.dry_run:
+                            purchased_mark = "[24h]" if payload.get("purchased24h") else ""
+                            title = payload.get('title', '')[:40].encode('ascii', 'replace').decode('ascii')
+                            author = payload.get('author', '').encode('ascii', 'replace').decode('ascii')
+                            hr = payload.get('highRating', 0)
+                            hr_mark = f" HR:{hr}" if hr > 0 else ""
+                            sc_mark = " [claim]" if payload.get('salesClaim') else ""
+                            tags = payload.get('tags', '').encode('ascii', 'replace').decode('ascii')[:30]
+                            tags_mark = f" [{tags}]" if tags else ""
+                            print(f"[dry] {purchased_mark}{sc_mark} {title} by {author} {payload.get('price', 0)}yen{hr_mark}{tags_mark}")
+                            total_records += 1
+                        else:
+                            result = send_to_gas(gas_url, payload)
+                            print(f"[gas] {result}")
+                            total_records += 1
+                            if result.get("isUpdate") is False:
+                                new_records += 1
+                    except Exception as e:
+                        print(f"[error] Skipping {url}: {e}")
+                        error_count += 1
+                    rand_sleep(config.between_articles_ms)
+
+            browser.close()
+
+        # 完了通知
+        elapsed_minutes = (time.time() - start_time) / 60
+        if not config.dry_run:
+            notify_complete(len(keywords), total_records, new_records, error_count, elapsed_minutes)
+
+    except Exception as e:
+        # 重大エラー通知
+        if not config.dry_run:
+            notify_critical(str(e))
+        raise
 
 
 if __name__ == "__main__":
