@@ -41,10 +41,13 @@ def notify_slack(message: str, level: str = "info") -> bool:
         return False
 
 
-def notify_start(keywords_count: int, day_name: str, total_keywords: int) -> bool:
+def notify_start(keywords_count: int, day_name: str, total_keywords: int, is_manual: bool = False) -> bool:
     """スクレイピング開始通知"""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    message = f"スクレイピング開始\n• 日時: {now}\n• {day_name}曜日分: {keywords_count}/{total_keywords} キーワード"
+    if is_manual:
+        message = f"スクレイピング開始（手動実行）\n• 日時: {now}\n• キーワード数: {keywords_count}"
+    else:
+        message = f"スクレイピング開始\n• 日時: {now}\n• {day_name}曜日分: {keywords_count}/{total_keywords} キーワード"
     return notify_slack(message, "info")
 
 

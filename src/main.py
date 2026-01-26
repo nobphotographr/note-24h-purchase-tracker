@@ -479,6 +479,9 @@ def run(config_path: str = "config.yaml", keywords_override: Optional[List[str]]
     day_names_ja = ["月", "火", "水", "木", "金", "土", "日"]
     day_name_ja = day_names_ja[datetime.now().weekday()]
 
+    # 手動実行判定: keywords_override あり、または split_days=1（全キーワード一括）、または別設定ファイル
+    is_manual = keywords_override is not None or config.split_days == 1 or config_path != "config.yaml"
+
     if keywords_override:
         keywords = keywords_override
         print(f"[manual] {len(keywords)} keywords specified: {', '.join(keywords)}")
@@ -502,7 +505,7 @@ def run(config_path: str = "config.yaml", keywords_override: Optional[List[str]]
 
     # 開始通知
     if not config.dry_run:
-        notify_start(len(keywords), day_name_ja, len(config.keywords))
+        notify_start(len(keywords), day_name_ja, len(config.keywords), is_manual=is_manual)
 
     try:
         with sync_playwright() as p:
