@@ -89,10 +89,12 @@ function getSourceData() {
 
   allData.forEach((row, index) => {
     const highEval = row[COLUMNS.HIGH_EVAL];
+    const purchased24h = row[COLUMNS.PURCHASED_24H];
     const processed = row[COLUMNS.PROCESSED];
 
-    // H列が0より大きく、P列が空（未処理）の行のみ
-    if (highEval !== null && highEval !== '' && highEval > 0 && !processed) {
+    // 価値あるデータ（高評価 > 0 OR 24h購入確認あり）かつ未処理の行のみ
+    const isValuable = (highEval !== null && highEval !== '' && highEval > 0) || purchased24h === '○';
+    if (isValuable && !processed) {
       filteredData.push(row);
       rowNumbers.push(index + 2); // 実際の行番号（ヘッダー分+1）
     }
@@ -135,8 +137,12 @@ function categorizeData(data) {
  * @return {string} ジャンル名
  */
 function detectGenre(tag, title, author) {
-  // 0. 著者ルールでマッチング（最優先）
+  // 文字列に変換（null/undefined/数値対策）
+  const tagStr = String(tag || '');
+  const titleStr = String(title || '');
   const authorStr = String(author || '');
+
+  // 0. 著者ルールでマッチング（最優先）
   if (authorStr) {
     for (const genre of Object.keys(AUTHOR_RULES)) {
       const authors = AUTHOR_RULES[genre] || [];
@@ -154,7 +160,7 @@ function detectGenre(tag, title, author) {
 
     const keywords = GENRE_RULES[genre] || [];
     for (const keyword of keywords) {
-      if (tag.includes(keyword)) {
+      if (tagStr.includes(keyword)) {
         return genre;
       }
     }
@@ -166,7 +172,7 @@ function detectGenre(tag, title, author) {
 
     const keywords = GENRE_RULES[genre] || [];
     for (const keyword of keywords) {
-      if (title.includes(keyword)) {
+      if (titleStr.includes(keyword)) {
         return genre;
       }
     }
@@ -367,7 +373,7 @@ function arraysEqual(arr1, arr2) {
 }
 
 /**
- * 処理済みフラグを更新
+ * 処理済みフラグを更新（一括書き込み最適化版）
  * @param {Array} rowNumbers 処理した行番号の配列
  */
 function markAsProcessed(rowNumbers) {
@@ -377,25 +383,31 @@ function markAsProcessed(rowNumbers) {
 
   const sourceSheet = SpreadsheetApp.openById(SOURCE_SPREADSHEET_ID).getSheetByName(SOURCE_SHEET_NAME);
   const processedDate = new Date();
+  const lastRow = sourceSheet.getLastRow();
 
-  // 一括更新のためのデータを準備
-  const updates = rowNumbers.map(rowNumber => {
-    return {
-      row: rowNumber,
-      value: processedDate
-    };
-  });
+  // P列の全データを取得
+  const processedCol = COLUMNS.PROCESSED + 1;
+  const processedData = sourceSheet.getRange(2, processedCol, lastRow - 1, 1).getValues();
 
-  // P列に処理日時を書き込み
-  updates.forEach(update => {
-    sourceSheet.getRange(update.row, COLUMNS.PROCESSED + 1).setValue(update.value);
-  });
+  // 行番号セットを作成
+  const rowNumberSet = new Set(rowNumbers);
+
+  // 該当行に処理日時を設定
+  for (let i = 0; i < processedData.length; i++) {
+    const actualRow = i + 2; // ヘッダー分を加算
+    if (rowNumberSet.has(actualRow)) {
+      processedData[i][0] = processedDate;
+    }
+  }
+
+  // 一括書き込み
+  sourceSheet.getRange(2, processedCol, processedData.length, 1).setValues(processedData);
 
   Logger.log(`${rowNumbers.length}件の処理済みフラグを更新しました`);
 }
 
 /**
- * ソーススプレッドシートのクリーニング
+ * ソーススプレッドシートのクリーニング（一括書き込み最適化版）
  * - 同じURLで複数レコードがある場合の優先順位:
  *   1. 新しいレコードに「24h購入確認あり（○）」がある → 新しい方を残す
  *   2. それ以外 → 処理済み（P列あり）のレコードを残す
@@ -416,8 +428,10 @@ function cleanSourceData() {
   }
 
   // 全データを取得（A列～P列：処理済みフラグまで）
-  const dataRange = sourceSheet.getRange(2, 1, lastRow - 1, COLUMNS.PROCESSED + 1);
+  const numCols = COLUMNS.PROCESSED + 1;
+  const dataRange = sourceSheet.getRange(2, 1, lastRow - 1, numCols);
   const data = dataRange.getValues();
+  const originalCount = data.length;
 
   // URLごとにグループ化
   const urlGroups = new Map();
@@ -464,7 +478,6 @@ function cleanSourceData() {
     if (newestRecord.purchased24h === '○') {
       // 新しい方を優先
       keepIndices.add(newestRecord.index);
-      Logger.log(`URL ${url}: 新しいレコードに24h購入確認あり → 新しい方を保持`);
       return;
     }
 
@@ -476,7 +489,6 @@ function cleanSourceData() {
         return new Date(current.date) > new Date(prev.date) ? current : prev;
       });
       keepIndices.add(latestProcessed.index);
-      Logger.log(`URL ${url}: 処理済みレコードを保持`);
       return;
     }
 
@@ -495,25 +507,47 @@ function cleanSourceData() {
     // 価値のある記録がない場合は、全て削除される
   });
 
-  // 削除する行を特定（下から削除するために逆順でソート）
-  const deleteRows = [];
+  // 残すデータだけを収集（元の順序を維持）
+  const keepData = [];
   data.forEach((row, index) => {
-    if (row[COLUMNS.URL] && !keepIndices.has(index)) {
-      deleteRows.push(index + 2); // ヘッダー行分を加算
+    if (keepIndices.has(index)) {
+      keepData.push(row);
     }
   });
 
-  // 下から順に削除
-  deleteRows.sort((a, b) => b - a);
-  deleteRows.forEach(rowNum => {
-    sourceSheet.deleteRow(rowNum);
-  });
+  const removedCount = originalCount - keepData.length;
+
+  // データがない場合はヘッダー以外を全削除
+  if (keepData.length === 0) {
+    if (lastRow > 1) {
+      sourceSheet.deleteRows(2, lastRow - 1);
+    }
+    return {
+      success: true,
+      message: 'クリーニング完了（全削除）',
+      removed: removedCount,
+      remaining: 0
+    };
+  }
+
+  // 一括書き込みで置き換え
+  // 1. データ領域をクリア
+  dataRange.clearContent();
+
+  // 2. 残すデータを一括書き込み
+  sourceSheet.getRange(2, 1, keepData.length, numCols).setValues(keepData);
+
+  // 3. 余分な行を削除（残ったデータより後ろの行）
+  const newLastRow = keepData.length + 1; // ヘッダー含む
+  if (lastRow > newLastRow) {
+    sourceSheet.deleteRows(newLastRow + 1, lastRow - newLastRow);
+  }
 
   return {
     success: true,
     message: 'クリーニング完了',
-    removed: deleteRows.length,
-    remaining: lastRow - 1 - deleteRows.length
+    removed: removedCount,
+    remaining: keepData.length
   };
 }
 
