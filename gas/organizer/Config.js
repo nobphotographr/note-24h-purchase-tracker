@@ -9,7 +9,7 @@ const SOURCE_SHEET_NAME = '記録データ';
 
 // ターゲットスプレッドシート（整理後データ）
 // ※初回実行時に自動作成されます。作成後はここにIDを設定してください
-const TARGET_SPREADSHEET_ID = '1Q4gMZe42XoPpqunh9OOxTPM2xIZvMYyfYoEZdfstfkI';
+const TARGET_SPREADSHEET_ID = '1JtBk6RkUk565_GxwT2YRjbtK0HY6xODIi4GEntvN79A';
 
 // ジャンル分類ルール
 // ※優先度順（上から順にマッチング。より具体的なジャンルを先に配置）
@@ -200,6 +200,7 @@ const AUTHOR_RULES = {
     // スポーツ・エンタメ
     'Reona Takenaka',
     '赤塚康太',
+    '青木真也',  // 格闘家
     // その他
     'nen88844',
     'まっすー',
