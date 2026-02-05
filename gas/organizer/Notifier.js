@@ -77,14 +77,16 @@ function notifySlack(message, level) {
  * @param {number} processedCount 処理件数
  * @param {number} cleanedCount クリーニングで削除した件数
  * @param {Object} genreCounts ジャンル別件数
+ * @param {number} newArrivalsCount 新着件数
  */
-function notifyGasComplete(processedCount, cleanedCount, genreCounts) {
+function notifyGasComplete(processedCount, cleanedCount, genreCounts, newArrivalsCount) {
   const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
 
   const lines = [
     '[GAS] データ整理完了',
     `• 日時: ${now}`,
     `• 処理件数: ${processedCount}件`,
+    `• 新着一覧: ${newArrivalsCount || 0}件`,
     `• クリーニング削除: ${cleanedCount}件`
   ];
 

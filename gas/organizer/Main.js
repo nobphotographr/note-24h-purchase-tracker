@@ -33,6 +33,10 @@ function organizeNoteData() {
       return;
     }
 
+    // 新着一覧を更新（当日分のデータ）
+    const newArrivalsCount = updateNewArrivalsSheet(targetSpreadsheet, sourceData);
+    Logger.log(`新着一覧: ${newArrivalsCount}件`);
+
     // ジャンル別にデータを分類
     const categorizedData = categorizeData(sourceData);
 
@@ -53,7 +57,7 @@ function organizeNoteData() {
     formatAllGenreSheets();
 
     // 完了通知
-    notifyGasComplete(sourceData.length, cleanResult.removed, genreCounts);
+    notifyGasComplete(sourceData.length, cleanResult.removed, genreCounts, newArrivalsCount);
 
     Logger.log('=== データ整理処理完了 ===');
 
@@ -571,4 +575,57 @@ function setupDailyTrigger() {
     .create();
 
   Logger.log('日次トリガーを設定しました（毎日午前2時実行）');
+}
+
+/**
+ * 新着一覧シートを更新
+ * 当日の記録日時のデータのみを表示（毎日リセット）
+ * @param {Spreadsheet} spreadsheet ターゲットスプレッドシート
+ * @param {Array} sourceData ソースデータ配列
+ * @return {number} 新着件数
+ */
+function updateNewArrivalsSheet(spreadsheet, sourceData) {
+  const SHEET_NAME = '新着一覧';
+  let sheet = spreadsheet.getSheetByName(SHEET_NAME);
+
+  // シートが存在しない場合は作成
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(SHEET_NAME, 0); // 先頭に挿入
+    initializeSheetHeaders(sheet);
+  }
+
+  // ヘッダー行以外をクリア（deleteRowsはエラーになる場合があるため）
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn() || OUTPUT_END_COL + 1;
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, lastCol).clearContent();
+  }
+
+  // 当日の日付を取得（日本時間）
+  const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd');
+
+  // 当日分のデータをフィルタリング
+  const todayData = sourceData.filter(row => {
+    const recordDate = row[COLUMNS.RECORD_DATE];
+    if (!recordDate) return false;
+
+    // 日付部分のみを比較
+    const recordDateStr = Utilities.formatDate(new Date(recordDate), 'Asia/Tokyo', 'yyyy/MM/dd');
+    return recordDateStr === today;
+  });
+
+  if (todayData.length === 0) {
+    Logger.log('新着一覧: 当日データなし');
+    return 0;
+  }
+
+  // データを書き込み（A〜O列）
+  const outputData = todayData.map(row => row.slice(OUTPUT_START_COL, OUTPUT_END_COL + 1));
+  sheet.getRange(2, 1, outputData.length, outputData[0].length).setValues(outputData);
+
+  // 書式設定
+  sortSheetByHighEval(sheet);
+  applySheetFormatting(sheet);
+
+  return todayData.length;
 }
