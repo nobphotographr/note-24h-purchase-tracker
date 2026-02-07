@@ -5,6 +5,10 @@
 
 // スプレッドシートのシート名
 const SHEET_NAME = '記録データ';
+const TRACKING_SHEET_NAME = 'トラッキング';
+
+// トラッキング設定
+const TRACKING_DAYS = 14;  // 追跡期間（日数）
 
 // 除外する著者リスト（競艇予想など関係ないコンテンツ）
 const EXCLUDE_AUTHORS = [
@@ -268,6 +272,14 @@ function doPost(e) {
       throw new Error('No data received');
     }
 
+    // トラッキング結果更新
+    if (data.action === 'updateTrackingResults' && data.results) {
+      const result = updateTrackingResults(data.results);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // データを記録
     const result = recordArticle(data);
 
@@ -293,6 +305,14 @@ function doGet(e) {
     // actionパラメータでアクションを判定
     if (e.parameter && e.parameter.action === 'clean') {
       const result = cleanDuplicates();
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // トラッキングリスト取得
+    if (e.parameter && e.parameter.action === 'getTrackingList') {
+      const result = getTrackingList();
       return ContentService
         .createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
@@ -446,6 +466,12 @@ function recordArticle(data) {
     sameUrlCount = urlColumn.filter(row => row[0] === data.url).length;
   }
 
+  // 24h購入確認ありの場合、トラッキングリストに追加
+  let trackingAdded = false;
+  if (data.purchased24h) {
+    trackingAdded = addToTracking(data);
+  }
+
   return {
     success: true,
     message: sameUrlCount > 1
@@ -453,7 +479,8 @@ function recordArticle(data) {
       : '新規記録しました',
     row: lastRow,
     isUpdate: sameUrlCount > 1,
-    recordCount: sameUrlCount
+    recordCount: sameUrlCount,
+    trackingAdded: trackingAdded
   };
 }
 
@@ -632,4 +659,242 @@ function testRecordArticle() {
 
   const result = recordArticle(testData);
   Logger.log(result);
+}
+
+// ============================================
+// トラッキング機能
+// ============================================
+
+/**
+ * トラッキングシートを初期化
+ */
+function initializeTrackingSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(TRACKING_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(TRACKING_SHEET_NAME);
+  }
+
+  // ヘッダー行が空の場合のみ設定
+  const headerRange = sheet.getRange(1, 1, 1, 11);
+  if (headerRange.getValues()[0][0] === '') {
+    headerRange.setValues([[
+      'URL',
+      'タイトル',
+      '著者',
+      '価格',
+      'リストイン日',
+      '終了日',
+      'チェック回数',
+      'ヒット回数',
+      '最終チェック日',
+      'ステータス',
+      'ヒット率(%)'
+    ]]);
+
+    // ヘッダー行の書式設定
+    headerRange.setFontWeight('bold');
+    headerRange.setBackground('#9C27B0');  // 紫
+    headerRange.setFontColor('#ffffff');
+
+    // 列幅を調整
+    sheet.setColumnWidth(1, 300);   // URL
+    sheet.setColumnWidth(2, 250);   // タイトル
+    sheet.setColumnWidth(3, 120);   // 著者
+    sheet.setColumnWidth(4, 70);    // 価格
+    sheet.setColumnWidth(5, 100);   // リストイン日
+    sheet.setColumnWidth(6, 100);   // 終了日
+    sheet.setColumnWidth(7, 90);    // チェック回数
+    sheet.setColumnWidth(8, 80);    // ヒット回数
+    sheet.setColumnWidth(9, 110);   // 最終チェック日
+    sheet.setColumnWidth(10, 80);   // ステータス
+    sheet.setColumnWidth(11, 80);   // ヒット率
+
+    // フィルターを設定
+    sheet.getRange(1, 1, 1, 11).createFilter();
+
+    // 1行目を固定
+    sheet.setFrozenRows(1);
+  }
+
+  return sheet;
+}
+
+/**
+ * トラッキングリストに記事を追加
+ * @param {Object} data 記事データ
+ * @return {boolean} 追加されたかどうか
+ */
+function addToTracking(data) {
+  const sheet = initializeTrackingSheet();
+  const lastRow = sheet.getLastRow();
+
+  // 既にトラッキング中かチェック（URL列で検索）
+  if (lastRow > 1) {
+    const urls = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    const statuses = sheet.getRange(2, 10, lastRow - 1, 1).getValues();
+
+    for (let i = 0; i < urls.length; i++) {
+      if (urls[i][0] === data.url && statuses[i][0] === '追跡中') {
+        // 既に追跡中の場合はスキップ
+        return false;
+      }
+    }
+  }
+
+  // 日付計算
+  const today = new Date();
+  const endDate = new Date(today);
+  endDate.setDate(endDate.getDate() + TRACKING_DAYS);
+
+  const formatDate = (date) => Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy/MM/dd');
+
+  // 新しい行を追加
+  const newRow = lastRow + 1;
+  sheet.getRange(newRow, 1, 1, 11).setValues([[
+    data.url,
+    data.title || '',
+    data.author || '',
+    data.price || 0,
+    formatDate(today),      // リストイン日
+    formatDate(endDate),    // 終了日
+    0,                      // チェック回数
+    1,                      // ヒット回数（初回検出分）
+    formatDate(today),      // 最終チェック日
+    '追跡中',               // ステータス
+    ''                      // ヒット率（後で計算）
+  ]]);
+
+  return true;
+}
+
+/**
+ * 追跡中のURLリストを取得（APIエンドポイント用）
+ * @return {Object} 追跡中URLリスト
+ */
+function getTrackingList() {
+  const sheet = initializeTrackingSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return { success: true, urls: [], count: 0 };
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+  const trackingUrls = [];
+
+  data.forEach((row, index) => {
+    if (row[9] === '追跡中') {  // ステータス列
+      trackingUrls.push({
+        row: index + 2,  // 実際の行番号
+        url: row[0],
+        title: row[1],
+        author: row[2],
+        price: row[3],
+        listInDate: row[4],
+        endDate: row[5],
+        checkCount: row[6],
+        hitCount: row[7]
+      });
+    }
+  });
+
+  return {
+    success: true,
+    urls: trackingUrls,
+    count: trackingUrls.length
+  };
+}
+
+/**
+ * トラッキング結果を更新（APIエンドポイント用）
+ * @param {Object} results チェック結果 { url: boolean, ... }
+ * @return {Object} 更新結果
+ */
+function updateTrackingResults(results) {
+  const sheet = initializeTrackingSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return { success: false, error: 'トラッキングデータがありません' };
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  const today = new Date();
+  const formatDate = (date) => Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy/MM/dd');
+
+  let updatedCount = 0;
+  let completedCount = 0;
+
+  data.forEach((row, index) => {
+    const url = row[0];
+    const endDateStr = row[5];
+    const status = row[9];
+
+    if (status !== '追跡中') return;
+
+    // 結果があれば更新
+    if (url in results) {
+      const actualRow = index + 2;
+      const checkCount = (row[6] || 0) + 1;
+      const hitCount = (row[7] || 0) + (results[url] ? 1 : 0);
+      const hitRate = checkCount > 0 ? Math.round((hitCount / checkCount) * 100) : 0;
+
+      // 終了日チェック
+      const endDate = new Date(endDateStr);
+      const isExpired = today >= endDate;
+      const newStatus = isExpired ? '完了' : '追跡中';
+
+      sheet.getRange(actualRow, 7).setValue(checkCount);      // チェック回数
+      sheet.getRange(actualRow, 8).setValue(hitCount);        // ヒット回数
+      sheet.getRange(actualRow, 9).setValue(formatDate(today)); // 最終チェック日
+      sheet.getRange(actualRow, 10).setValue(newStatus);      // ステータス
+      sheet.getRange(actualRow, 11).setValue(hitRate);        // ヒット率
+
+      updatedCount++;
+      if (isExpired) completedCount++;
+    }
+  });
+
+  return {
+    success: true,
+    updated: updatedCount,
+    completed: completedCount
+  };
+}
+
+/**
+ * 期限切れのトラッキングを完了に更新
+ */
+function expireOldTracking() {
+  const sheet = initializeTrackingSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) return { expired: 0 };
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  const today = new Date();
+  let expiredCount = 0;
+
+  data.forEach((row, index) => {
+    const endDateStr = row[5];
+    const status = row[9];
+
+    if (status !== '追跡中') return;
+
+    const endDate = new Date(endDateStr);
+    if (today >= endDate) {
+      const actualRow = index + 2;
+      const checkCount = row[6] || 0;
+      const hitCount = row[7] || 0;
+      const hitRate = checkCount > 0 ? Math.round((hitCount / checkCount) * 100) : 0;
+
+      sheet.getRange(actualRow, 10).setValue('完了');
+      sheet.getRange(actualRow, 11).setValue(hitRate);
+      expiredCount++;
+    }
+  });
+
+  return { expired: expiredCount };
 }
