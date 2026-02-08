@@ -33,19 +33,24 @@ function organizeNoteData() {
       return;
     }
 
-    // 新着一覧を更新（当日分のデータ）
-    const newArrivalsCount = updateNewArrivalsSheet(targetSpreadsheet, sourceData);
-    Logger.log(`新着一覧: ${newArrivalsCount}件`);
+    // 当日分のデータをフィルタリング
+    const todayData = filterTodayData(sourceData);
+    Logger.log(`新着一覧: ${todayData.length}件`);
 
-    // ジャンル別にデータを分類
+    // 新着一覧を更新（当日分のデータ）
+    updateNewArrivalsSheetWithData(targetSpreadsheet, todayData);
+
+    // ジャンル別にデータを分類（全体はシート更新用、当日は通知用）
     const categorizedData = categorizeData(sourceData);
+    const todayCategorizedData = categorizeData(todayData);
 
     // ジャンルごとに処理（優先順序に従う）
-    const genreCounts = {};
+    const genreCounts = {};  // 通知用：当日データのジャンル別件数
     GENRE_PRIORITY.forEach(genre => {
       const data = categorizedData[genre] || [];
-      genreCounts[genre] = data.length;
-      Logger.log(`${genre}: ${data.length}件`);
+      const todayCount = (todayCategorizedData[genre] || []).length;
+      genreCounts[genre] = todayCount;  // 通知には当日データの件数を使用
+      Logger.log(`${genre}: ${todayCount}件（新着） / ${data.length}件（未処理全体）`);
 
       if (data.length > 0) {
         updateGenreSheet(targetSpreadsheet, genre, data);
@@ -56,8 +61,8 @@ function organizeNoteData() {
     markAsProcessed(rowNumbers);
     formatAllGenreSheets();
 
-    // 完了通知
-    notifyGasComplete(sourceData.length, cleanResult.removed, genreCounts, newArrivalsCount);
+    // 完了通知（新着件数 = 当日データの件数）
+    notifyGasComplete(sourceData.length, cleanResult.removed, genreCounts, todayData.length);
 
     Logger.log('=== データ整理処理完了 ===');
 
@@ -578,13 +583,30 @@ function setupDailyTrigger() {
 }
 
 /**
- * 新着一覧シートを更新
- * 当日の記録日時のデータのみを表示（毎日リセット）
- * @param {Spreadsheet} spreadsheet ターゲットスプレッドシート
+ * 当日分のデータをフィルタリング
  * @param {Array} sourceData ソースデータ配列
- * @return {number} 新着件数
+ * @return {Array} 当日分のデータ配列
  */
-function updateNewArrivalsSheet(spreadsheet, sourceData) {
+function filterTodayData(sourceData) {
+  // 当日の日付を取得（日本時間）
+  const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd');
+
+  return sourceData.filter(row => {
+    const recordDate = row[COLUMNS.RECORD_DATE];
+    if (!recordDate) return false;
+
+    // 日付部分のみを比較
+    const recordDateStr = Utilities.formatDate(new Date(recordDate), 'Asia/Tokyo', 'yyyy/MM/dd');
+    return recordDateStr === today;
+  });
+}
+
+/**
+ * 新着一覧シートを更新（フィルタリング済みデータを受け取る版）
+ * @param {Spreadsheet} spreadsheet ターゲットスプレッドシート
+ * @param {Array} todayData 当日分のデータ配列
+ */
+function updateNewArrivalsSheetWithData(spreadsheet, todayData) {
   const SHEET_NAME = '新着一覧';
   let sheet = spreadsheet.getSheetByName(SHEET_NAME);
 
@@ -601,22 +623,9 @@ function updateNewArrivalsSheet(spreadsheet, sourceData) {
     sheet.getRange(2, 1, lastRow - 1, lastCol).clearContent();
   }
 
-  // 当日の日付を取得（日本時間）
-  const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd');
-
-  // 当日分のデータをフィルタリング
-  const todayData = sourceData.filter(row => {
-    const recordDate = row[COLUMNS.RECORD_DATE];
-    if (!recordDate) return false;
-
-    // 日付部分のみを比較
-    const recordDateStr = Utilities.formatDate(new Date(recordDate), 'Asia/Tokyo', 'yyyy/MM/dd');
-    return recordDateStr === today;
-  });
-
   if (todayData.length === 0) {
     Logger.log('新着一覧: 当日データなし');
-    return 0;
+    return;
   }
 
   // データを書き込み（A〜O列）
@@ -626,6 +635,17 @@ function updateNewArrivalsSheet(spreadsheet, sourceData) {
   // 書式設定
   sortSheetByHighEval(sheet);
   applySheetFormatting(sheet);
+}
 
+/**
+ * 新着一覧シートを更新（後方互換性のため残す）
+ * 当日の記録日時のデータのみを表示（毎日リセット）
+ * @param {Spreadsheet} spreadsheet ターゲットスプレッドシート
+ * @param {Array} sourceData ソースデータ配列
+ * @return {number} 新着件数
+ */
+function updateNewArrivalsSheet(spreadsheet, sourceData) {
+  const todayData = filterTodayData(sourceData);
+  updateNewArrivalsSheetWithData(spreadsheet, todayData);
   return todayData.length;
 }
